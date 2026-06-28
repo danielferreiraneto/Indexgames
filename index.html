@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  IndexGames — Launcher de Jogos (arquivo único: HTML + CSS + JS)
+  ============================================================================
+  Visual inspirado na interface da PS5 e no estilo "Liquid Glass" da Apple:
+  fundo escuro com profundidade, painéis em vidro (glassmorphism), brilho
+  suave que reage ao ponteiro/toque e transições fluidas de fade + zoom.
+
+  COMO ADICIONAR SEUS PRÓPRIOS JOGOS
+  -----------------------------------
+  Procure o array "GAMES" dentro da tag <script> (seção "CONFIGURAÇÃO DOS
+  JOGOS") e edite/adicione objetos com: title, genre, tagline, file e colors.
+  O campo "file" deve apontar para o arquivo HTML do jogo (caminho relativo
+  ou absoluto). Cada jogo é aberto dentro de um <iframe> em tela cheia, sem
+  recarregar este launcher — por isso a navegação entre jogos é instantânea
+  e mantém as transições suaves.
+
+  Dica: se abrir este arquivo direto do disco (file://) e os jogos não
+  carregarem por restrições do navegador, sirva a pasta com um servidor local
+  simples (ex.: "python -m http.server") e acesse via http://localhost.
+  ============================================================================
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#05060a">
+<meta name="description" content="IndexGames — launcher de jogos HTML5 com visual premium inspirado na PS5 e no Liquid Glass da Apple.">
+<title>IndexGames — Launcher</title>
+
+<!-- Ícone da aba (gerado em SVG, sem arquivos externos) -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230c0f16'/%3E%3Crect x='9' y='18' width='4' height='8' rx='1.6' fill='%233f7dff'/%3E%3Crect x='15' y='12' width='4' height='14' rx='1.6' fill='%236fa3ff'/%3E%3Crect x='21' y='7' width='4' height='19' rx='1.6' fill='%23cfe0ff'/%3E%3C/svg%3E">
+
+<!-- Tipografia: Sora (display) + Inter (texto). Caem para fontes do sistema se ficar offline. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+  /* ==========================================================================
+     1. TOKENS DE DESIGN — paleta, tipografia, raios, durações
+     ========================================================================== */
+  :root{
+    /* Paleta: preto / cinza / azul / branco */
+    --bg-0:#05060a;            /* base quase preta */
+    --bg-1:#0c0f16;            /* topo do degradê de fundo */
+    --bg-2:#12161f;            /* tom intermediário usado em painéis sólidos */
+
+    --panel:        rgba(255,255,255,.045);  /* vidro padrão dos cartões/barras */
+    --panel-strong: rgba(255,255,255,.085);  /* vidro em estado de hover/foco */
+    --border:        rgba(255,255,255,.09);
+    --border-strong: rgba(255,255,255,.20);
+
+    --blue-400:#6fa3ff;
+    --blue-500:#3f7dff;
+    --blue-600:#2457d6;
+    --ice:#cfe0ff;
+
+    --text-0:#f1f3f8;  /* texto principal */
+    --text-1:#a7afc0;  /* texto secundário */
+    --text-2:#6b7281;  /* texto terciário / legendas */
+
+    --radius-lg:28px;
+    --radius-md:18px;
+    --radius-sm:12px;
+
+    --ease-glass: cubic-bezier(.22,1,.36,1);
+    --dur-fast:.2s;
+    --dur-med:.45s;
+    --dur-slow:.8s;
+
+    --font-display:'Sora','Segoe UI',system-ui,-apple-system,sans-serif;
+    --font-body:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;
+  }
+
+  /* ==========================================================================
+     2. RESET E BASE
+     ========================================================================== */
+  *,*::before,*::after{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  html{ -webkit-text-size-adjust:100%; }
+  body{
+    margin:0;
+    min-height:100vh;
+    background:var(--bg-0);
+    color:var(--text-0);
+    font-family:var(--font-body);
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    overflow-x:hidden;
+  }
+  button{ font:inherit; color:inherit; cursor:pointer; }
+  svg{ display:block; }
+  p,h1,h2{ margin:0; }
+
+  /* Estado de foco visível e consistente (acessibilidade) */
+  :focus-visible{ outline:2px solid var(--blue-400); outline-offset:3px; border-radius:8px; }
+
+  /* ==========================================================================
+     3. FUNDO COM PROFUNDIDADE — degradês, "aurora" e granulação sutil
+     ========================================================================== */
+  .bg-layer{ position:fixed; inset:0; z-index:0; pointer-events:none; }
+
+  .bg-base{
+    background:
+      radial-gradient(circle at 18% -8%,  rgba(63,125,255,.18), transparent 58%),
+      radial-gradient(circle at 88% 4%,   rgba(111,163,255,.10), transparent 55%),
+      radial-gradient(circle at 50% 115%, rgba(36,87,214,.16), transparent 60%),
+      linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 55%, #020308 100%);
+  }
+
+  /* Manchas de luz suaves que derivam lentamente, como o fundo dinâmico da PS5 */
+  .bg-aurora span{
+    position:absolute;
+    border-radius:50%;
+    filter:blur(70px);
+    opacity:.32;
+    mix-blend-mode:screen;
+    will-change:transform;
+    animation:bg-drift 24s ease-in-out infinite alternate;
+  }
+  .bg-aurora span:nth-child(1){
+    width:42vw; height:42vw; left:-10vw; top:-12vw;
+    background:radial-gradient(circle, var(--blue-500), transparent 70%);
+  }
+  .bg-aurora span:nth-child(2){
+    width:32vw; height:32vw; right:-8vw; top:8vw;
+    background:radial-gradient(circle, var(--ice), transparent 70%);
+    animation-delay:-8s;
+  }
+  .bg-aurora span:nth-child(3){
+    width:38vw; height:38vw; left:28%; bottom:-18vw;
+    background:radial-gradient(circle, var(--blue-600), transparent 70%);
+    animation-delay:-15s;
+  }
+  @keyframes bg-drift{
+    from{ transform:translate3d(0,0,0) scale(1); }
+    to{   transform:translate3d(3%,-4%,0) scale(1.08); }
+  }
+
+  /* Granulação fina via filtro SVG (feTurbulence) — sem imagens externas */
+  .bg-grain{ opacity:.05; mix-blend-mode:overlay; filter:url(#grainFilter); }
+
+  /* ==========================================================================
+     4. BARRA SUPERIOR (glass)
+     ========================================================================== */
+  .topbar{
+    position:fixed; top:0; left:0; right:0; z-index:40;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px clamp(20px,4vw,48px);
+    background:rgba(8,10,14,.55);
+    backdrop-filter:blur(22px) saturate(160%);
+    -webkit-backdrop-filter:blur(22px) saturate(160%);
+    border-bottom:1px solid var(--border);
+  }
+  @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+    .topbar,.game-bar{ background:rgba(8,10,14,.94); }
+  }
+
+  .brand{ display:flex; align-items:center; gap:12px; }
+  .brand-mark{ width:32px; height:32px; color:var(--blue-400); flex-shrink:0; }
+  .brand-name{ font-family:var(--font-display); font-weight:700; font-size:19px; letter-spacing:.2px; }
+  .brand-name .accent{ color:var(--blue-400); font-weight:600; }
+
+  /* Botão circular em vidro, usado para tela cheia / voltar */
+  .icon-btn{
+    width:44px; height:44px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--panel); border:1px solid var(--border);
+    transition:background var(--dur-fast) var(--ease-glass),
+               border-color var(--dur-fast) var(--ease-glass),
+               transform var(--dur-fast) var(--ease-glass);
+  }
+  .icon-btn:hover{ background:var(--panel-strong); border-color:var(--border-strong); transform:translateY(-1px); }
+  .icon-btn:active{ transform:translateY(0) scale(.94); }
+  .icon-btn svg{ width:19px; height:19px; }
+
+  /* Alterna entre os ícones de "expandir" e "comprimir" conforme o estado de tela cheia */
+  .icon-compress{ display:none; }
+  body.is-fullscreen .icon-expand{ display:none; }
+  body.is-fullscreen .icon-compress{ display:block; }
+
+  /* ==========================================================================
+     5. BIBLIOTECA / GRADE DE JOGOS
+     ========================================================================== */
+  #home-view{ transition:opacity var(--dur-med) var(--ease-glass), transform var(--dur-med) var(--ease-glass); }
+  body.is-game-active #home-view{
+    opacity:0; transform:scale(.96); pointer-events:none;
+  }
+
+  .library{
+    position:relative; z-index:1;
+    max-width:1400px; margin:0 auto;
+    padding:128px clamp(20px,4vw,48px) 90px;
+  }
+  .library-head{ margin-bottom:36px; }
+  .eyebrow{
+    font-size:12px; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--blue-400); font-weight:600; margin-bottom:10px;
+  }
+  .library-title{
+    font-family:var(--font-display); font-weight:700;
+    font-size:clamp(28px,4vw,40px); margin-bottom:8px;
+  }
+  .library-meta{ color:var(--text-1); font-size:14px; }
+
+  .game-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+    gap:clamp(18px,2.4vw,30px);
+  }
+
+  /* ==========================================================================
+     6. CARTÃO DE JOGO (glassmorphism + brilho "liquid glass")
+     ========================================================================== */
+  .card{
+    all:unset;                 /* remove estilo nativo de <button> */
+    display:block; box-sizing:border-box; width:100%; text-align:left;
+    position:relative; border-radius:var(--radius-lg);
+    background:var(--panel); border:1px solid var(--border);
+    overflow:hidden; cursor:pointer;
+
+    opacity:0; transform:translateY(18px);
+    animation:card-in .6s var(--ease-glass) forwards;
+    animation-delay:calc(var(--i,0) * 70ms);
+
+    transition:transform var(--dur-med) var(--ease-glass),
+               box-shadow var(--dur-med) var(--ease-glass),
+               border-color var(--dur-fast) var(--ease-glass);
+  }
+  @keyframes card-in{ to{ opacity:1; transform:translateY(0); } }
+
+  .card:hover, .card:focus-visible{
+    transform:translateY(-8px) scale(1.015);
+    border-color:var(--border-strong);
+    box-shadow:0 24px 60px -20px rgba(63,125,255,.45),
+               0 0 0 1px rgba(255,255,255,.06) inset;
+  }
+  .card:active{ transform:translateY(-4px) scale(1); }
+
+  /* Brilho que acompanha o ponteiro (simula refração do "vidro líquido") */
+  .card-glow{
+    position:absolute; inset:0; z-index:3; pointer-events:none; opacity:0;
+    background:radial-gradient(circle at var(--mx,50%) var(--my,30%), rgba(255,255,255,.35), transparent 45%);
+    mix-blend-mode:soft-light;
+    transition:opacity var(--dur-fast) var(--ease-glass);
+  }
+  .card:hover .card-glow, .card:focus-visible .card-glow{ opacity:1; }
+
+  .card-cover{
+    display:block; position:relative; aspect-ratio:3/4; overflow:hidden;
+    background:linear-gradient(150deg,var(--a1),var(--a2));
+  }
+  .card-pattern{ position:absolute; inset:0; width:100%; height:100%; opacity:.16; }
+  .card-scrim{
+    position:absolute; inset:auto 0 0 0; height:60%;
+    background:linear-gradient(180deg,transparent,rgba(3,4,8,.85) 80%);
+  }
+  .card-genre{
+    position:absolute; top:14px; left:14px;
+    font-size:11px; letter-spacing:.08em; text-transform:uppercase; font-weight:600;
+    padding:6px 12px; border-radius:999px; color:var(--text-0);
+    background:rgba(8,10,16,.55); border:1px solid rgba(255,255,255,.14);
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  }
+  .card-play{
+    position:absolute; right:16px; bottom:16px; width:46px; height:46px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(10,12,18,.55); border:1px solid rgba(255,255,255,.22);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    opacity:0; transform:scale(.7) translateY(6px);
+    transition:opacity var(--dur-fast) var(--ease-glass), transform var(--dur-fast) var(--ease-glass);
+  }
+  .card:hover .card-play, .card:focus-visible .card-play{ opacity:1; transform:scale(1) translateY(0); }
+  .card-play svg{ width:17px; height:17px; color:#fff; margin-left:2px; }
+
+  .card-body{ display:block; position:relative; z-index:2; padding:18px 18px 20px; }
+  .card-title{ font-family:var(--font-display); font-weight:600; font-size:17px; margin-bottom:4px; }
+  .card-sub{ font-size:13px; line-height:1.4; color:var(--text-1); }
+
+  /* ==========================================================================
+     7. TELA DO JOGO (overlay em iframe) + transição fade/zoom
+     ========================================================================== */
+  .game-view{
+    position:fixed; inset:0; z-index:50;
+    display:flex; flex-direction:column;
+    background:#000;
+    opacity:0; transform:scale(1.06); pointer-events:none;
+    transition:opacity var(--dur-med) var(--ease-glass), transform var(--dur-med) var(--ease-glass);
+  }
+  .game-view.is-active{ opacity:1; transform:scale(1); pointer-events:auto; }
+
+  .game-bar{
+    position:relative; z-index:2;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px clamp(16px,3vw,32px);
+    background:rgba(8,10,14,.55);
+    backdrop-filter:blur(22px) saturate(160%);
+    -webkit-backdrop-filter:blur(22px) saturate(160%);
+    border-bottom:1px solid var(--border);
+  }
+  .back-btn{
+    all:unset; box-sizing:border-box; cursor:pointer;
+    display:flex; align-items:center; gap:8px;
+    padding:9px 16px 9px 12px; border-radius:999px;
+    background:var(--panel); border:1px solid var(--border);
+    font-size:14px; font-weight:500;
+    transition:background var(--dur-fast), border-color var(--dur-fast), transform var(--dur-fast);
+  }
+  .back-btn:hover{ background:var(--panel-strong); border-color:var(--border-strong); transform:translateX(-2px); }
+  .back-btn svg{ width:16px; height:16px; }
+
+  .game-title-active{ font-family:var(--font-display); font-weight:600; font-size:14px; color:var(--text-1); }
+
+  .frame-wrap{ position:relative; flex:1; background:#000; }
+  .frame-wrap iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; background:#000; }
+
+  .frame-loading{
+    position:absolute; inset:0; z-index:1;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    background:#000; transition:opacity .35s ease;
+  }
+  .frame-loading.is-hidden{ opacity:0; pointer-events:none; }
+  .spinner{ width:40px; height:40px; color:var(--blue-400); animation:spin 1s linear infinite; }
+  .spinner circle{ stroke-dasharray:90; stroke-dashoffset:60; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .frame-loading p{ font-size:13px; letter-spacing:.03em; color:var(--text-1); }
+
+  /* ==========================================================================
+     8. ACESSIBILIDADE — movimento reduzido
+     ========================================================================== */
+  @media (prefers-reduced-motion: reduce){
+    .bg-aurora span{ animation:none; }
+    .card{ animation:none; opacity:1; transform:none; }
+    .card, .game-view, #home-view, .icon-btn, .back-btn, .card-glow, .card-play{
+      transition-duration:.001ms !important;
+    }
+  }
+
+  /* ==========================================================================
+     9. RESPONSIVIDADE
+     ========================================================================== */
+  @media (max-width:720px){
+    .library{ padding-top:104px; }
+    .game-grid{ grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:14px; }
+    .card-title{ font-size:15px; }
+    .card-body{ padding:14px 14px 16px; }
+  }
+  @media (max-width:420px){
+    .brand-name{ font-size:16px; }
+    .library-title{ font-size:26px; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- ========================================================================
+       SPRITES SVG GLOBAIS (definidos uma única vez e reutilizados)
+       ======================================================================== -->
+  <svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+    <defs>
+      <!-- Padrão de linhas diagonais usado como textura sutil na capa dos cartões -->
+      <pattern id="diagLines" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <line x1="0" y1="0" x2="0" y2="14" stroke="#ffffff" stroke-width="1" stroke-opacity=".5"></line>
+      </pattern>
+    </defs>
+    <!-- Filtro de granulação (ruído) usado no fundo para dar sensação de profundidade -->
+    <filter id="grainFilter">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch" result="noise"></feTurbulence>
+      <feColorMatrix in="noise" type="matrix"
+        values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .08 0"></feColorMatrix>
+    </filter>
+  </svg>
+
+  <!-- ========================================================================
+       FUNDO COM PROFUNDIDADE
+       ======================================================================== -->
+  <div class="bg-layer bg-base" aria-hidden="true"></div>
+  <div class="bg-layer bg-aurora" aria-hidden="true"><span></span><span></span><span></span></div>
+  <div class="bg-layer bg-grain" aria-hidden="true"></div>
+
+  <!-- ========================================================================
+       TELA INICIAL (barra superior + biblioteca de jogos)
+       ======================================================================== -->
+  <div id="home-view">
+
+    <header class="topbar">
+      <div class="brand">
+        <!-- Marca: barras ascendentes dentro de um quadrado arredondado (índice + jogo) -->
+        <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect x="1" y="1" width="30" height="30" rx="9" stroke="currentColor" stroke-opacity=".35" stroke-width="1.4"></rect>
+          <rect x="9" y="18" width="4" height="8" rx="1.6" fill="currentColor"></rect>
+          <rect x="15" y="12" width="4" height="14" rx="1.6" fill="currentColor"></rect>
+          <rect x="21" y="7" width="4" height="19" rx="1.6" fill="currentColor"></rect>
+        </svg>
+        <span class="brand-name">Index<span class="accent">Games</span></span>
+      </div>
+
+      <button class="icon-btn js-fullscreen-toggle" type="button" aria-label="Alternar tela cheia" title="Tela cheia">
+        <svg class="icon-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 4H5a1 1 0 0 0-1 1v4"></path>
+          <path d="M15 4h4a1 1 0 0 1 1 1v4"></path>
+          <path d="M9 20H5a1 1 0 0 1-1-1v-4"></path>
+          <path d="M15 20h4a1 1 0 0 0 1-1v-4"></path>
+        </svg>
+        <svg class="icon-compress" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 9V5"></path><path d="M9 9H5"></path>
+          <path d="M15 9V5"></path><path d="M15 9h4"></path>
+          <path d="M9 15v4"></path><path d="M9 15H5"></path>
+          <path d="M15 15v4"></path><path d="M15 15h4"></path>
+        </svg>
+      </button>
+    </header>
+
+    <main class="library">
+      <div class="library-head">
+        <p class="eyebrow">Biblioteca</p>
+        <h1 class="library-title">Seus jogos</h1>
+        <p class="library-meta" id="game-count">Carregando biblioteca…</p>
+      </div>
+
+      <!-- A grade é preenchida dinamicamente pelo JavaScript a partir do array GAMES -->
+      <section class="game-grid" id="game-grid" aria-label="Lista de jogos"></section>
+    </main>
+  </div>
+
+  <!-- ========================================================================
+       TELA DO JOGO — carregada dentro de um iframe, com transição fade + zoom
+       ======================================================================== -->
+  <div class="game-view" id="game-view" inert>
+    <div class="game-bar">
+      <button class="back-btn" id="back-btn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6"></path>
+        </svg>
+        <span>Voltar</span>
+      </button>
+
+      <span class="game-title-active" id="game-title-active"></span>
+
+      <button class="icon-btn js-fullscreen-toggle" type="button" aria-label="Alternar tela cheia" title="Tela cheia">
+        <svg class="icon-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 4H5a1 1 0 0 0-1 1v4"></path>
+          <path d="M15 4h4a1 1 0 0 1 1 1v4"></path>
+          <path d="M9 20H5a1 1 0 0 1-1-1v-4"></path>
+          <path d="M15 20h4a1 1 0 0 0 1-1v-4"></path>
+        </svg>
+        <svg class="icon-compress" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 9V5"></path><path d="M9 9H5"></path>
+          <path d="M15 9V5"></path><path d="M15 9h4"></path>
+          <path d="M9 15v4"></path><path d="M9 15H5"></path>
+          <path d="M15 15v4"></path><path d="M15 15h4"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div class="frame-wrap">
+      <iframe id="game-frame" title="Janela do jogo" allow="fullscreen; autoplay; gamepad" allowfullscreen></iframe>
+      <div class="frame-loading" id="frame-loading">
+        <svg class="spinner" viewBox="0 0 50 50" aria-hidden="true">
+          <circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-width="4"></circle>
+        </svg>
+        <p>Carregando jogo…</p>
+      </div>
+    </div>
+  </div>
+
+  <noscript>
+    <p style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+              background:#05060a;color:#f1f3f8;font-family:sans-serif;padding:24px;text-align:center;">
+      O IndexGames precisa de JavaScript habilitado para funcionar.
+    </p>
+  </noscript>
+
+  <script>
+  /* ============================================================================
+     IndexGames — lógica do launcher
+     Organização: 1) configuração dos jogos · 2) renderização da grade ·
+     3) brilho que segue o ponteiro · 4) abrir/fechar jogos (transições) ·
+     5) Fullscreen API · 6) inicialização
+     ============================================================================ */
+  (function () {
+    'use strict';
+
+    /* --------------------------------------------------------------------
+       1. CONFIGURAÇÃO DOS JOGOS
+       Edite este array para montar a sua própria biblioteca.
+       - title:   nome exibido no cartão
+       - genre:   rótulo curto exibido no canto da capa
+       - tagline: descrição breve (uma linha)
+       - file:    caminho do arquivo HTML do jogo (relativo ou absoluto)
+       - colors:  [corInicial, corFinal] do degradê da capa
+    -------------------------------------------------------------------- */
+    var GAMES = [
+      { title:'Nebula Drift',     genre:'Corrida',     tagline:'Velocidade entre as estrelas.',        file:'jogos/nebula-drift.html',     colors:['#1c2a4a','#3f7dff'] },
+      { title:'Aurora Strike',    genre:'Ação',         tagline:'Combate tático em alta velocidade.',   file:'jogos/aurora-strike.html',    colors:['#142036','#5b8cff'] },
+      { title:'Quantum Forge',    genre:'Estratégia',   tagline:'Construa, comande, conquiste.',        file:'jogos/quantum-forge.html',    colors:['#1a1f2b','#7c8aa8'] },
+      { title:'Solstice Reach',   genre:'Aventura',     tagline:'Explore mundos esquecidos.',           file:'jogos/solstice-reach.html',   colors:['#112338','#2fb6c9'] },
+      { title:'Cobalt Ronin',     genre:'Ação',         tagline:'Precisão é a sua lâmina.',             file:'jogos/cobalt-ronin.html',     colors:['#1b1f2e','#4063c9'] },
+      { title:'Glacier Protocol', genre:'Tático',       tagline:'Cada decisão importa.',                file:'jogos/glacier-protocol.html', colors:['#16202c','#7fa8d9'] },
+      { title:'Voidrunner',       genre:'Plataforma',   tagline:'Salte além do vazio.',                 file:'jogos/voidrunner.html',       colors:['#0d0f16','#2b3550'] },
+      { title:'Mythic Loom',      genre:'RPG',          tagline:'Teça o destino de um reino.',          file:'jogos/mythic-loom.html',      colors:['#1a1c2b','#5a6b9e'] }
+    ];
+
+    /* --------------------------------------------------------------------
+       Referências de DOM usadas em todo o script
+    -------------------------------------------------------------------- */
+    var grid          = document.getElementById('game-grid');
+    var gameCountEl   = document.getElementById('game-count');
+    var homeView      = document.getElementById('home-view');
+    var gameView      = document.getElementById('game-view');
+    var gameFrame     = document.getElementById('game-frame');
+    var gameTitleEl   = document.getElementById('game-title-active');
+    var loadingEl     = document.getElementById('frame-loading');
+    var backBtn       = document.getElementById('back-btn');
+    var body          = document.body;
+
+    var lastFocusedCard = null;
+    var loadSafetyTimer = null;
+
+    /* --------------------------------------------------------------------
+       2. RENDERIZAÇÃO DA GRADE DE JOGOS
+       Cada cartão é um <button> real (acessível por teclado/leitor de tela)
+       construído via DOM, evitando innerHTML com dados dinâmicos.
+    -------------------------------------------------------------------- */
+    function createCard(game, index) {
+      var card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'card';
+      card.setAttribute('aria-label', 'Abrir ' + game.title);
+      card.style.setProperty('--i', index);
+      card.style.setProperty('--a1', game.colors[0]);
+      card.style.setProperty('--a2', game.colors[1]);
+      card.dataset.file = game.file;
+      card.dataset.title = game.title;
+
+      var glow = document.createElement('span');
+      glow.className = 'card-glow';
+      card.appendChild(glow);
+
+      var cover = document.createElement('span');
+      cover.className = 'card-cover';
+
+      var pattern = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      pattern.setAttribute('class', 'card-pattern');
+      pattern.innerHTML = '<rect width="100%" height="100%" fill="url(#diagLines)"></rect>';
+      cover.appendChild(pattern);
+
+      var scrim = document.createElement('span');
+      scrim.className = 'card-scrim';
+      cover.appendChild(scrim);
+
+      var genre = document.createElement('span');
+      genre.className = 'card-genre';
+      genre.textContent = game.genre;
+      cover.appendChild(genre);
+
+      var playBtn = document.createElement('span');
+      playBtn.className = 'card-play';
+      playBtn.setAttribute('aria-hidden', 'true');
+      playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>';
+      cover.appendChild(playBtn);
+
+      card.appendChild(cover);
+
+      var cardBody = document.createElement('span');
+      cardBody.className = 'card-body';
+
+      var title = document.createElement('h2');
+      title.className = 'card-title';
+      title.textContent = game.title;
+      cardBody.appendChild(title);
+
+      var sub = document.createElement('p');
+      sub.className = 'card-sub';
+      sub.textContent = game.tagline;
+      cardBody.appendChild(sub);
+
+      card.appendChild(cardBody);
+
+      return card;
+    }
+
+    function renderGrid() {
+      var fragment = document.createDocumentFragment();
+      GAMES.forEach(function (game, i) { fragment.appendChild(createCard(game, i)); });
+      grid.appendChild(fragment);
+
+      gameCountEl.textContent = GAMES.length === 1
+        ? '1 jogo disponível'
+        : GAMES.length + ' jogos disponíveis';
+    }
+
+    /* --------------------------------------------------------------------
+       3. BRILHO QUE SEGUE O PONTEIRO (efeito "liquid glass")
+       Um único listener delegado na grade (melhor desempenho do que um
+       listener por cartão) com throttle via requestAnimationFrame.
+    -------------------------------------------------------------------- */
+    var glowFrame = null;
+    function handlePointerMove(event) {
+      var card = event.target.closest ? event.target.closest('.card') : null;
+      if (!card || glowFrame) return;
+      glowFrame = requestAnimationFrame(function () {
+        var rect = card.getBoundingClientRect();
+        var x = ((event.clientX - rect.left) / rect.width) * 100;
+        var y = ((event.clientY - rect.top) / rect.height) * 100;
+        card.style.setProperty('--mx', x + '%');
+        card.style.setProperty('--my', y + '%');
+        glowFrame = null;
+      });
+    }
+    grid.addEventListener('pointermove', handlePointerMove);
+
+    // Toque: um pulso de brilho simples ao tocar, já que não há "hover" contínuo
+    grid.addEventListener('touchstart', function (event) {
+      var card = event.target.closest ? event.target.closest('.card') : null;
+      if (!card) return;
+      card.style.setProperty('--mx', '50%');
+      card.style.setProperty('--my', '30%');
+    }, { passive: true });
+
+    /* --------------------------------------------------------------------
+       4. ABRIR E FECHAR JOGOS — transição combinada de fade + zoom
+       (a tela inicial encolhe/esmaece enquanto a tela do jogo cresce/aparece)
+    -------------------------------------------------------------------- */
+    function openGame(card) {
+      lastFocusedCard = card;
+
+      gameTitleEl.textContent = card.dataset.title;
+      loadingEl.classList.remove('is-hidden');
+      gameFrame.src = card.dataset.file;
+
+      gameView.removeAttribute('inert');
+      homeView.setAttribute('inert', '');
+      body.classList.add('is-game-active');
+
+      // Garante que a transição CSS rode após a troca de classe/atributo
+      requestAnimationFrame(function () { gameView.classList.add('is-active'); });
+
+      backBtn.focus();
+
+      // Segurança: caso o "load" do iframe não dispare, esconde o spinner mesmo assim
+      clearTimeout(loadSafetyTimer);
+      loadSafetyTimer = setTimeout(function () { loadingEl.classList.add('is-hidden'); }, 6000);
+    }
+
+    function closeGame() {
+      gameView.classList.remove('is-active');
+      homeView.removeAttribute('inert');
+      body.classList.remove('is-game-active');
+      gameView.setAttribute('inert', '');
+
+      if (lastFocusedCard) lastFocusedCard.focus();
+
+      // Espera a transição terminar antes de descarregar o jogo
+      setTimeout(function () {
+        gameFrame.src = 'about:blank';
+        loadingEl.classList.remove('is-hidden');
+      }, 480);
+    }
+
+    gameFrame.addEventListener('load', function () {
+      loadingEl.classList.add('is-hidden');
+      clearTimeout(loadSafetyTimer);
+    });
+
+    grid.addEventListener('click', function (event) {
+      var card = event.target.closest ? event.target.closest('.card') : null;
+      if (card) openGame(card);
+    });
+
+    backBtn.addEventListener('click', closeGame);
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && body.classList.contains('is-game-active')) closeGame();
+    });
+
+    /* --------------------------------------------------------------------
+       5. FULLSCREEN API (com fallback de prefixos para navegadores antigos)
+    -------------------------------------------------------------------- */
+    function isFullscreen() {
+      return !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+    }
+    function requestFs(el) {
+      var fn = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+      if (fn) fn.call(el);
+    }
+    function exitFs() {
+      var fn = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+      if (fn) fn.call(document);
+    }
+    function toggleFullscreen() {
+      if (isFullscreen()) exitFs(); else requestFs(document.documentElement);
+    }
+    function syncFullscreenState() {
+      body.classList.toggle('is-fullscreen', isFullscreen());
+    }
+    ['fullscreenchange', 'webkitfullscreenchange', 'MSFullscreenChange'].forEach(function (evt) {
+      document.addEventListener(evt, syncFullscreenState);
+    });
+    document.querySelectorAll('.js-fullscreen-toggle').forEach(function (btn) {
+      btn.addEventListener('click', toggleFullscreen);
+    });
+
+    /* --------------------------------------------------------------------
+       6. INICIALIZAÇÃO
+    -------------------------------------------------------------------- */
+    renderGrid();
+
+  })();
+  </script>
+</body>
+</html>
